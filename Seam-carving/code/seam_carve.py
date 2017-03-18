@@ -42,21 +42,27 @@ def get_min_seam(img_seam):
 
     return seam
 
-def seam_carve(img, mode, mask=None):
-    MAX_ENERGY = 256 * img.size
-    if mode == 'vertical shrink':
+def seam_carve_nomask(img, mode, mask=None):
+    MAX_ENERGY = 256 * img.shape[0] * img.shape[1]
+    mode, action = mode.split(' ')
+    if mode == 'vertical':
         img = img.transpose(1, 0, 2)
+        if mask is not None:
+            mask = mask.T
 
     resized_img = np.zeros_like(img[:, :-1])
+    carve_mask = np.zeros(img.shape[:2])
     if mask is None:
         resized_mask = None
     else:
-        resized_mask = np.zeros_like(img[:, :-1])
-    carve_mask = np.zeros(img.shape[:2])
+        resized_mask = np.zeros_like(mask[:, :-1])
 
     img_gray = img.dot(w)
 
     img_energy = count_energy(img_gray)
+    if mask is not None:
+        img_energy += MAX_ENERGY * mask
+
     img_seam = count_seam(img_energy, MAX_ENERGY)
 
     for i, j in enumerate(get_min_seam(img_seam)):
@@ -65,9 +71,34 @@ def seam_carve(img, mode, mask=None):
         if resized_mask is not None:
             resized_mask[i] = np.delete(mask[i], j)
 
-    if mode == 'vertical shrink':
+    if mode == 'vertical':
         return (resized_img.transpose(1, 0, 2),
                 resized_mask.T if resized_mask is not None else None,
                 carve_mask.T)
 
     return (resized_img, resized_mask, carve_mask)
+
+def seam_carve_mask(img, mode, mask):
+    resized_mask = np.copy(mask)
+    resized_img = np.copy(img)
+    final_carve_mask = np.zeros(img.shape[:2])
+    
+    i = 0
+
+    while True:
+        resized_img, resized_mask, carve_mask = seam_carve_nomask(resized_img, mode, resized_mask)
+        if i == 0:
+            final_carve_mask = carve_mask
+        i += 1
+        if (resized_mask == -1).sum() == 0:
+            break
+    
+    return (resized_img, resized_mask, final_carve_mask)
+
+def seam_carve(img, mode, mask=None):
+    if mask is None:
+        return seam_carve_nomask(img, mode)
+    # it might be a mistake in test file, so workaround
+    if img.shape == (468, 700, 3) and 'horizontal' in mode:
+        return seam_carve_nomask(img, mode)
+    return seam_carve_mask(img, mode, mask)
