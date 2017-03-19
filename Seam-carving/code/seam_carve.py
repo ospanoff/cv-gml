@@ -16,16 +16,17 @@ def count_energy(img_gs):
 
     return np.sqrt(h_grad ** 2 + v_grad ** 2)
 
-def count_seam(img_energy, MAX_ENERGY):
+def count_seam(img_energy):
     seam = np.copy(img_energy)
-    layers = MAX_ENERGY * np.ones((img_energy.shape[1] + 2, 3)) #, dtype=np.int)
+    layers = np.ones((3, img_energy.shape[1] - 2))
     for i, energy in enumerate(seam[:-1]):
-        layers[:-2, 0] = np.copy(energy)
-        layers[1:-1, 1] = np.copy(energy)
-        layers[2:, 2] = np.copy(energy)
+        layers[0] = energy[:-2]
+        layers[1] = energy[1:-1]
+        layers[2] = energy[2:]
 
-        min_energy = np.min(layers[1:-1], axis=1)
-        seam[i + 1] += min_energy
+        seam[i + 1, 1:-1] += np.min(layers, axis=0)
+        seam[i + 1, 0] += np.min(seam[i, :2])
+        seam[i + 1, -1] += np.min(seam[i, -2:])
 
     return seam
 
@@ -42,34 +43,42 @@ def get_min_seam(img_seam):
 
     return seam
 
-def seam_carve_nomask(img, mode, mask=None):
+def seam_carve_one(img, mode, mask=None):
     MAX_ENERGY = 256 * img.shape[0] * img.shape[1]
+
     mode, action = mode.split(' ')
+    resize = -1 if action == 'shrink' else 1
+
     if mode == 'vertical':
         img = img.transpose(1, 0, 2)
         if mask is not None:
             mask = mask.T
 
-    resized_img = np.zeros_like(img[:, :-1])
+    resized_img = np.zeros((img.shape[0], img.shape[1] + resize, 3))
     carve_mask = np.zeros(img.shape[:2])
     if mask is None:
         resized_mask = None
     else:
-        resized_mask = np.zeros_like(mask[:, :-1])
+        resized_mask = np.zeros((img.shape[0], img.shape[1] + resize))
 
     img_gray = img.dot(w)
-
     img_energy = count_energy(img_gray)
     if mask is not None:
         img_energy += MAX_ENERGY * mask
-
-    img_seam = count_seam(img_energy, MAX_ENERGY)
+    img_seam = count_seam(img_energy)
 
     for i, j in enumerate(get_min_seam(img_seam)):
         carve_mask[i, j] = 1
-        resized_img[i] = np.delete(img[i], j, axis=0)
+        if resize == -1:  # shrink
+            resized_img[i] = np.delete(img[i], j, axis=0)
+        else:  # expand
+            resized_img[i] = np.insert(img[i], j + 1, img[i, j], axis=0)
+
         if resized_mask is not None:
-            resized_mask[i] = np.delete(mask[i], j)
+            if resize == -1:
+                resized_mask[i] = np.delete(mask[i], j)
+            else:
+                resized_mask[i] = np.insert(mask[i], j + 1, mask[i, j])
 
     if mode == 'vertical':
         return (resized_img.transpose(1, 0, 2),
@@ -78,28 +87,13 @@ def seam_carve_nomask(img, mode, mask=None):
 
     return (resized_img, resized_mask, carve_mask)
 
-def seam_carve_mask(img, mode, mask):
-    resized_mask = np.copy(mask)
-    resized_img = np.copy(img)
-    final_carve_mask = np.zeros(img.shape[:2])
-    
-    i = 0
-
-    while True:
-        resized_img, resized_mask, carve_mask = seam_carve_nomask(resized_img, mode, resized_mask)
-        if i == 0:
-            final_carve_mask = carve_mask
-            break  # test time limit
-        i += 1
-        if (resized_mask == -1).sum() == 0:
-            break
-    
-    return (resized_img, resized_mask, final_carve_mask)
+def seam_carve_object(img, mode, mask):
+    """
+    Needed to delete object by deleting seams one-by-one in a loop
+    """
+    return seam_carve_one(img, mode, mask)
 
 def seam_carve(img, mode, mask=None):
     if mask is None:
-        return seam_carve_nomask(img, mode)
-    # it might be a mistake in test file, so workaround
-    if img.shape == (468, 700, 3) and 'horizontal' in mode:
-        return seam_carve_nomask(img, mode)
-    return seam_carve_mask(img, mode, mask)
+        return seam_carve_one(img, mode)
+    return seam_carve_object(img, mode, mask)
