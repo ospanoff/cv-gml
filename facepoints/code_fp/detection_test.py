@@ -52,12 +52,12 @@ def compute_metric(detected, gt, img_shapes):
 train_gt = read_csv(join(train_dir, 'gt.csv'))
 train_img_dir = join(train_dir, 'images')
 
-# model = train_detector(train_gt, train_img_dir, fast_train=False)
-# model.save('facepoints_model.hdf5')
+model = train_detector(train_gt, train_img_dir, fast_train=False)
+model.save('facepoints_model.hdf5')
 
 # train_detector(train_gt, train_img_dir, fast_train=True)
 
-model = load_model('facepoints_model.hdf5')
+# model = load_model('facepoints_model.hdf5')
 # model = load_model('model.hdf5')
 test_img_dir = join(test_dir, 'images')
 detected_points = detect(model, test_img_dir)
