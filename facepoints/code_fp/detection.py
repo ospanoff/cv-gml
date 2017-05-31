@@ -11,25 +11,23 @@ from keras.layers import (
 )
 from keras.optimizers import SGD
 from keras.callbacks import (
-    LearningRateScheduler, EarlyStopping, ModelCheckpoint
+    EarlyStopping, ModelCheckpoint
 )
 
 
-IMG_EDGE_SIZE = 96
+IMG_EDGE_SIZE = 100
 IMG_SHAPE = (IMG_EDGE_SIZE, IMG_EDGE_SIZE)
 
-GSCALE = False
+GSCALE = True
 INPUT_SHAPE = (*IMG_SHAPE, 1 if GSCALE else 3)  # input layer shape
 
-Y_BIAS = IMG_EDGE_SIZE / 2
-Y_NORM = IMG_EDGE_SIZE / 2
+Y_BIAS = 50  # IMG_EDGE_SIZE / 2
+Y_NORM = 10  # IMG_EDGE_SIZE / 2
 MIN_ROTATION_ANGLE = 5  # in degrees
 MAX_ROTATION_ANGLE = 15  # in degrees
 
 
-def rotate_img(img, y):
-    alphas = list(range(-MAX_ROTATION_ANGLE, -MIN_ROTATION_ANGLE + 1)) +\
-        list(range(MIN_ROTATION_ANGLE, MAX_ROTATION_ANGLE + 1))
+def rotate_img(img, y, alphas):
     # alpha = 2 * MAX_ROTATE_ANGLE * (np.random.rand() - 0.5)
     alpha = np.random.choice(alphas)
     alpha_rad = np.radians(alpha)
@@ -97,7 +95,13 @@ def load_data(img_dir, gt, input_shape, output_size=28, test=False):
             # Rotated images
             for r in range(rotations_num):
                 indx = start_rotation + rotations_num * i + r
-                X[indx], y[indx] = rotate_img(X[i], y[i])
+                if r == 0:
+                    alphas = list(
+                        range(-MAX_ROTATION_ANGLE, -MIN_ROTATION_ANGLE + 1))
+                else:
+                    alphas = list(
+                        range(MIN_ROTATION_ANGLE, MAX_ROTATION_ANGLE + 1))
+                X[indx], y[indx] = rotate_img(X[i], y[i], alphas)
 
             # Cutted images
             for c in range(cut_num):
@@ -113,9 +117,9 @@ def load_data(img_dir, gt, input_shape, output_size=28, test=False):
     if not test:
         y = (y - Y_BIAS) / Y_NORM
 
-    # mean = np.mean(X, axis=0)
-    # std = (np.mean(X ** 2, axis=0) - mean ** 2) ** 0.5
-    # X = (X - mean) / std
+    mean = np.mean(X, axis=0)
+    std = (np.mean(X ** 2, axis=0) - mean ** 2) ** 0.5
+    X = (X - mean) / std
 
     print("FINISHED LOADING DATA:", time.time() - _start)
 
@@ -126,23 +130,19 @@ def build_model(input_shape, output_size=28):
     model = Sequential()
 
     model.add(Conv2D(32, (3, 3), activation='relu', input_shape=input_shape))
-    model.add(MaxPooling2D(pool_size=(2, 2), strides=(2, 2)))
-    model.add(Dropout(0.1))
+    model.add(MaxPooling2D(pool_size=(2, 2)))
 
     model.add(Conv2D(64, (2, 2), activation='relu'))
-    model.add(MaxPooling2D(pool_size=(2, 2), strides=(2, 2)))
-    model.add(Dropout(0.2))
+    model.add(MaxPooling2D(pool_size=(2, 2)))
 
     model.add(Conv2D(128, (2, 2), activation='relu'))
-    model.add(MaxPooling2D(pool_size=(2, 2), strides=(2, 2)))
-    model.add(Dropout(0.3))
+    model.add(MaxPooling2D(pool_size=(2, 2)))
 
     model.add(Flatten())
-    model.add(Dense(1000, activation='relu'))
-    model.add(Dropout(0.5))
-
-    model.add(Dense(1000, activation='relu'))
-    model.add(Dropout(0.5))
+    model.add(Dense(512, activation='relu'))
+    model.add(Dropout(0.2))
+    model.add(Dense(512, activation='relu'))
+    model.add(Dropout(0.3))
 
     model.add(Dense(output_size))
 
@@ -159,11 +159,8 @@ def train_detector(train_gt, train_img_dir, fast_train=False):
     X, y, _ = load_data(train_img_dir, train_gt, input_shape, output_size)
 
     # Model config.
-    epochs = 1 if fast_train else 1000
-    learning_rates = np.linspace(0.03, 0.001, epochs)
-    patience = 100  # stop if err has not been updated patience time
-
-    change_lr = LearningRateScheduler(lambda epoch: learning_rates[epoch])
+    epochs = 1 if fast_train else 200
+    patience = 20  # stop if err has not been updated patience time
     early_stop = EarlyStopping(patience=patience)
 
     # SGD config.
@@ -184,9 +181,8 @@ def train_detector(train_gt, train_img_dir, fast_train=False):
     model.fit(
         X, y,
         epochs=epochs,
-        batch_size=1000 if not fast_train else 32,
-        validation_split=0.2,
-        callbacks=[early_stop, change_lr, checkpoint_callback]
+        validation_split=0.1,
+        callbacks=[early_stop, checkpoint_callback]
     )
     print('end_time: {}, duration(min): {}'.format(time.strftime('%H:%M:%S'),
           (time.time()-start_time) / 60.))
