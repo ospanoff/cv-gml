@@ -3,6 +3,7 @@ import glob
 import numpy as np
 import skimage.io as skimio
 import skimage.transform as skimtr
+from sklearn.model_selection import train_test_split
 
 from keras.models import Sequential
 from keras.layers import (
@@ -157,10 +158,11 @@ def train_detector(train_gt, train_img_dir, fast_train=False):
         train_gt = {key: train_gt[key] for key in keys}
 
     X, y, _ = load_data(train_img_dir, train_gt, input_shape, output_size)
+    X_tr, X_te, y_tr, y_te = train_test_split(X, y, test_size=0.1)
 
     # Model config.
-    epochs = 1 if fast_train else 200
-    patience = 20  # stop if err has not been updated patience time
+    epochs = 1 if fast_train else 350
+    patience = 50  # stop if err has not been updated patience time
     early_stop = EarlyStopping(patience=patience)
 
     # SGD config.
@@ -179,9 +181,9 @@ def train_detector(train_gt, train_img_dir, fast_train=False):
     start_time = time.time()
     print('start_time: {}'.format(time.strftime('%H:%M:%S')))
     model.fit(
-        X, y,
+        X_tr, y_tr,
         epochs=epochs,
-        validation_split=0.1,
+        validation_data=(X_te, y_te),
         callbacks=[early_stop, checkpoint_callback]
     )
     print('end_time: {}, duration(min): {}'.format(time.strftime('%H:%M:%S'),
