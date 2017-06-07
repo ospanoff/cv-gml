@@ -1,6 +1,8 @@
 import numpy as np
 from sklearn.svm import SVC
+from sklearn.multiclass import OneVsRestClassifier
 from skimage.transform import resize
+
 
 def count_energy(img_gs):
     h_grad = np.zeros_like(img_gs)
@@ -13,24 +15,29 @@ def count_energy(img_gs):
     v_grad[:, 0] = img_gs[:, 1] - img_gs[:, 0]
     v_grad[:, -1] = img_gs[:, -1] - img_gs[:, -2]
 
-    return np.sqrt(h_grad ** 2 + v_grad ** 2), np.arctan2(h_grad   , v_grad)
+    return np.sqrt(h_grad ** 2 + v_grad ** 2), np.arctan2(h_grad, v_grad)
 
-def hog(image_gs, orientations=9, pixels_per_cell=(6, 6), cells_per_block=(3, 3), ignore_extra=False):
+
+def hog(image_gs, orientations=9, pixels_per_cell=(8, 8),
+        cells_per_block=(3, 3), ignore_extra=False):
     img_energy, img_dir = count_energy(image_gs)
 
     if ignore_extra:
-        cells_h, cells_w = np.round(np.array(image_gs.shape) / pixels_per_cell).astype(np.int)
+        cells_h, cells_w = \
+            np.round(np.array(image_gs.shape) / pixels_per_cell).astype(np.int)
     else:
-        cells_h, cells_w = np.ceil(np.array(image_gs.shape) / pixels_per_cell).astype(np.int)
+        cells_h, cells_w = \
+            np.ceil(np.array(image_gs.shape) / pixels_per_cell).astype(np.int)
     hog_feat = np.zeros((cells_h, cells_w, orientations))
 
     ppc_h, ppc_w = pixels_per_cell
     for i in range(image_gs.shape[0]):
         for j in range(image_gs.shape[1]):
-            segment = int((orientations * (img_dir[i, j] + np.pi)) / (2 * np.pi))
+            segment = int((orientations * (img_dir[i, j] + np.pi)) /
+                          (2 * np.pi))
             try:
                 hog_feat[i // ppc_h, j // ppc_w, segment] += img_energy[i, j]
-            except:
+            except Exception:
                 pass
 
     cpb_h, cpb_w = cells_per_block
@@ -42,9 +49,11 @@ def hog(image_gs, orientations=9, pixels_per_cell=(6, 6), cells_per_block=(3, 3)
 
     return np.array(hog_final)
 
+
 def extract_hog(img, shape=(45, 45)):
     img_gs = img.dot([0.299, 0.587, 0.114])
-    return hog(resize(img_gs, shape))
+    return hog(resize(img_gs, shape, mode='reflect'))
+
 
 def fit_and_classify(train_featues, train_labels, test_features):
     clf = OneVsRestClassifier(SVC(C=300, gamma=0.01), n_jobs=-1)

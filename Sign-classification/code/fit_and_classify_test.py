@@ -2,8 +2,10 @@
 
 from sys import argv, exit
 from numpy import zeros
+from os.path import join
 from fit_and_classify import fit_and_classify, extract_hog
 from skimage.io import imread
+
 
 def read_gt(gt_dir):
     fgt = open(join(gt_dir, 'gt.csv'))
@@ -21,12 +23,14 @@ def read_gt(gt_dir):
 
 
 def extract_features(path, filenames):
-    hog_length = len(extract_hog(imread(path + '/' + filenames[0], plugin='matplotlib')))
+    hog_length = len(extract_hog(imread(join(path, filenames[0]),
+                                        plugin='matplotlib')))
     data = zeros((len(filenames), hog_length))
     for i in range(0, len(filenames)):
-        filename = path + '/' + filenames[i]
+        filename = join(path, filenames[i])
         data[i, :] = extract_hog(imread(filename, plugin='matplotlib'))
     return data
+
 
 if len(argv) != 3:
     print('Usage: %s train_data_path test_data_path' % argv[0])
@@ -43,5 +47,3 @@ test_features = extract_features(test_data_path, test_filenames)
 
 y = fit_and_classify(train_features, train_labels, test_features)
 print('Accuracy: %.4f' % (sum(test_labels == y) / float(test_labels.shape[0])))
-
-
